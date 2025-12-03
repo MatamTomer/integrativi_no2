@@ -1,7 +1,7 @@
-
 import json
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 def analyze_neuron_spikes(json_file_path):
     """
@@ -26,8 +26,21 @@ def analyze_neuron_spikes(json_file_path):
         print("No neuron data found in the JSON file.")
         return
 
-    # Extract spike times for each neuron for faster access
-    neuron_spike_times = [[spike['spikeTime'] for spike in neuron] for neuron in all_neurons_data]
+    # Extract spike times for each neuron, convert to sorted numpy arrays for fast search
+    neuron_spike_times = [
+        np.sort(np.array([spike['spikeTime'] for spike in neuron], dtype=float))
+        for neuron in all_neurons_data
+    ]
+
+    time_window = 0.001
+
+    def count_correlated_spikes(source_times, target_times):
+        """Return number of target spikes within +/- time_window of each source spike."""
+        if source_times.size == 0 or target_times.size == 0:
+            return 0
+        lower_bounds = np.searchsorted(target_times, source_times - time_window, side='left')
+        upper_bounds = np.searchsorted(target_times, source_times + time_window, side='right')
+        return int(np.sum(upper_bounds - lower_bounds))
 
     # --- Analysis ---
     # For each neuron i, create a vector of correlations with all other neurons j
@@ -35,20 +48,23 @@ def analyze_neuron_spikes(json_file_path):
 
     for i in range(num_neurons):
         correlation_vector = np.zeros(num_neurons, dtype=int)
-        
-        # Iterate through each spike of the 'source' neuron i
-        for spike_time_i in neuron_spike_times[i]:
-            
-            # Compare with all 'target' neurons j
-            for j in range(num_neurons):
-                
-                # Count spikes in neuron j within the time window of spike_time_i
-                for spike_time_j in neuron_spike_times[j]:
-                    if abs(spike_time_i - spike_time_j) <= 0.001:
-                        correlation_vector[j] += 1
-        
+        source_times = neuron_spike_times[i]
+
+        for j in range(num_neurons):
+            correlation_vector[j] = count_correlated_spikes(source_times, neuron_spike_times[j])
+
         all_neurons_correlation_vectors.append(correlation_vector)
         print(f"Neuron {i+1} correlation vector: {correlation_vector}")
+
+    # Ensure destination folder exists before saving any outputs
+    histogram_dir = "neuron_histograms"
+    os.makedirs(histogram_dir, exist_ok=True)
+
+    # Persist correlation vectors for later inspection
+    correlation_vectors_path = os.path.join(histogram_dir, "correlation_vectors.json")
+    with open(correlation_vectors_path, 'w') as corr_file:
+        json.dump([vec.tolist() for vec in all_neurons_correlation_vectors], corr_file, indent=2)
+    print(f"Saved correlation vectors to '{correlation_vectors_path}'")
 
     # --- Plotting Histograms ---
     for i, correlation_vector in enumerate(all_neurons_correlation_vectors):
@@ -65,8 +81,8 @@ def analyze_neuron_spikes(json_file_path):
         plt.xticks(neuron_indices)
         plt.grid(axis='y', linestyle='--')
         
-        # Save the plot to a file
-        plot_filename = f"neuron_{i+1}_histogram.png"
+        # Save the plot to a file inside the histogram directory
+        plot_filename = os.path.join(histogram_dir, f"neuron_{i+1}_histogram.png")
         plt.savefig(plot_filename)
         print(f"Saved histogram for neuron {i+1} to '{plot_filename}'")
         
