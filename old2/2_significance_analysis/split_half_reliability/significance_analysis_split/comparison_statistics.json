@@ -1,0 +1,7 @@
+{
+  "correlation": 0.9927266796918075,
+  "mean_difference": 0.059889251281643685,
+  "std_difference": 2.008863867917661,
+  "n_compared_values": 4040,
+  "interpretation": "Correlation of 0.993 indicates high split-half reliability"
+}

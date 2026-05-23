@@ -1,0 +1,13 @@
+{
+  "total_spikes": 429471,
+  "total_bins": 18634,
+  "duration_seconds": 18633.173049999983,
+  "spikes_with_activity_lt_15": 293531,
+  "spikes_with_activity_gte_15": 135940,
+  "percentage_spikes_lt_15": 68.3471060909817,
+  "percentage_spikes_gte_15": 31.652893909018303,
+  "bins_with_activity_lt_15": 17482,
+  "bins_with_activity_gte_15": 1152,
+  "percentage_bins_lt_15": 93.81775249543844,
+  "percentage_bins_gte_15": 6.182247504561554
+}

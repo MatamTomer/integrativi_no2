@@ -1,0 +1,10 @@
+# Large raw/derived data files — too big for GitHub (>100MB)
+neuron_data.json
+neuron_data_new.json
+neuron_data_filtered_activity_lt15.json
+old2/old/analysis by discritization/binned_activity_1ms_original.json
+old2/old/analysis by discritization/binned_activity_5ms.json
+old2/old/analysis by discritization/pairwise_conditional_vectors_1ms.json
+old2/old/analysis by discritization/pairwise_conditional_vectors_5ms.json
+Experiment1/Raster_Plot/raster_original.html
+Experiment1/Raster_Plot/raster_gaussian.html
