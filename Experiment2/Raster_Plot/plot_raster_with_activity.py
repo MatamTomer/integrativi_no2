@@ -5,6 +5,12 @@ from plotly.subplots import make_subplots
 from pathlib import Path
 
 # ─────────────────────────────────────────────
+# Which neurons to show
+# Set to None to show all, or list specific IDs e.g. [1, 5, 12, 93, 145]
+# ─────────────────────────────────────────────
+KEEP_NEURONS = [23, 7]  # e.g. [1, 5, 12, 93, 145]
+
+# ─────────────────────────────────────────────
 # 1. Load spike data
 # ─────────────────────────────────────────────
 print("Loading spike data...")
@@ -17,6 +23,13 @@ spike_times = [
     np.array([spike['spikeTime'] for spike in neuron], dtype=np.float64)
     for neuron in neuron_data
 ]
+
+# Filter to selected neurons if specified
+if KEEP_NEURONS is not None:
+    keep_set    = set(int(x) for x in KEEP_NEURONS)
+    filtered    = [(nid, st) for nid, st in zip(neuron_ids, spike_times) if int(nid) in keep_set]
+    neuron_ids  = [x[0] for x in filtered]
+    spike_times = [x[1] for x in filtered]
 
 N = len(neuron_ids)
 print(f"  {N} neurons loaded")

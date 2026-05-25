@@ -1,23 +1,25 @@
 import json
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from scipy.special import expit
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-CONFIG_ID  = 1
+EXPERIMENT2 = Path(__file__).parent.parent
+
+CONFIG_ID  = 2
 SEED       = 42
 SPLIT      = 0.9
 ACT_BIN_MS = 50     # ms window for population activity trace
-BETA           = 20  # scaling parameter in σ_i(u) = 1 / (1 + exp(-(BETA*u - m_i)))
+BETA           = 10  # scaling parameter in σ_i(u) = 1 / (1 + exp(-(BETA*u - m_i)))
 BASELINE_SCALE = 5   # baseline firing prob = B_i / BASELINE_SCALE  (σ_i(0) = B_i/k)
-SHIFT_MS   = 50_000 # circular shift applied to Group 1 in the null model (ms)
 
 # ─────────────────────────────────────────────
 # 1. Load Config data → binary spike matrix
 # ─────────────────────────────────────────────
 print("Loading neuron data...")
-with open('../neuron_data.json') as f:
+with open(EXPERIMENT2 / 'neuron_data.json') as f:
     neuron_data = json.load(f)
 
 all_units = [neuron[0]['unit'] for neuron in neuron_data if neuron]
@@ -25,13 +27,21 @@ N = len(all_units)
 unit_idx = {u: i for i, u in enumerate(all_units)}
 print(f"  {N} neurons")
 
+# Load config time bounds from Configurations/config_times.csv
+cfg_times = pd.read_csv(EXPERIMENT2 / 'Configurations' / 'config_times.csv')
+cfg_row   = cfg_times[cfg_times['config'] == CONFIG_ID].iloc[0]
+t_start_cfg = float(cfg_row['t_start'])
+t_end_cfg   = float(cfg_row['t_end'])
+print(f"  Config {CONFIG_ID}: {t_start_cfg:.3f}s – {t_end_cfg:.3f}s")
+
 print(f"Building binary matrix for Config {CONFIG_ID}...")
 config_spikes = {}
 for neuron in neuron_data:
     if not neuron:
         continue
     unit = neuron[0]['unit']
-    spikes = np.array([s['spikeTime'] for s in neuron if s['Config'] == CONFIG_ID])
+    all_spikes = np.array([s['spikeTime'] for s in neuron], dtype=np.float64)
+    spikes = all_spikes[(all_spikes >= t_start_cfg) & (all_spikes <= t_end_cfg)]
     config_spikes[unit] = spikes
 
 all_ms = np.concatenate([
@@ -59,7 +69,7 @@ print(f"  {X_real.sum():,} spikes loaded")
 # 2. B_i for this config → m_i
 # ─────────────────────────────────────────────
 print("Loading B_i...")
-bi_df = pd.read_csv('../Configurations/config_B_i.csv')
+bi_df = pd.read_csv(EXPERIMENT2 / 'Configurations' / 'config_B_i.csv')
 bi_cfg = bi_df[bi_df['config'] == CONFIG_ID].set_index('unit')['B_i']
 B = np.array([float(bi_cfg.get(u, 1e-10)) for u in all_units])
 B = np.clip(B, 1e-10, 1.0 - 1e-10)
@@ -67,17 +77,28 @@ m = np.log(BASELINE_SCALE / B - 1.0)   # σ_i(0) = B_i / BASELINE_SCALE
 print(f"  B range: {B.min():.2e} – {B.max():.2e}")
 
 # ─────────────────────────────────────────────
-# 3. Weight matrix
+# 3. Weight tensor — w_ij(tau) = P_ij(tau) - B_j, tau = 1..5ms
 # ─────────────────────────────────────────────
 print("Loading weights...")
-W_df = pd.read_csv('weights_wide.csv', index_col=0)
-W_df.index   = W_df.index.astype(int)
-W_df.columns = W_df.columns.astype(int)
-W = W_df.reindex(index=all_units, columns=all_units).fillna(0.0).values  # (N, N)
-print(f"  W shape: {W.shape}, non-zero: {(W != 0).sum()}")
+with open(Path(__file__).parent / 'weights_pij_all.json') as f:
+    w_data = json.load(f)
+
+w_full     = np.array(w_data['w_ij'])   # (N, N, 21)
+bins_w     = w_data['bins']             # [-10..10]
+# Extract tau = 1..5 ms — indices where bins == 1,2,3,4,5
+tau_indices = [bins_w.index(tau) for tau in [1, 2, 3, 4, 5]]
+TAU_MAX     = len(tau_indices)          # 5
+
+# Align to all_units order
+w_ids  = w_data['neuron_ids']
+id2row = {nid: idx for idx, nid in enumerate(w_ids)}
+order  = [id2row[u] for u in all_units]
+W_causal = w_full[np.ix_(order, order, tau_indices)]  # (N, N, 5)
+# W_causal[i, j, k] = w_ij at lag (k+1) ms
+print(f"  W_causal shape: {W_causal.shape}, non-zero: {(W_causal != 0).sum()}")
 
 # ─────────────────────────────────────────────
-# 4. Random 50/50 split
+# 4. Random split
 # ─────────────────────────────────────────────
 rng  = np.random.default_rng(SEED)
 perm = rng.permutation(N)
@@ -90,34 +111,41 @@ g2_arr = np.array(group2_idx)
 print(f"  Group 1 (real):      {G1} neurons")
 print(f"  Group 2 (simulated): {G2} neurons")
 
-W_sub = W[group2_idx, :]   # (G2, N)
-m_sub = m[group2_idx]      # (G2,)
+# W_sub_causal[g, i, k] = w_{all_units[i] -> group2[g]} at lag (k+1) ms
+W_sub_causal = W_causal[group2_idx, :, :]   # (G2, N, 5)
+m_sub        = m[group2_idx]                # (G2,)
 
 # ─────────────────────────────────────────────
 # 5. Model runner
-#    x_i(t+1) = Bernoulli(σ_i(Σ_j w_ij x_j(t)))
-#    σ_i(u)   = 1 / (1 + exp(-(BETA*u - m_i)))
-#    Group 1 input is taken from X_g1_input (real or shifted).
-#    Both model and null use the same SEED so random draws are identical —
-#    the only difference is which Group 1 spike train drives them.
+#    x_j(t) = Bernoulli(σ_j(Σ_{i≠j} Σ_{tau=1}^{5} w_ij[tau] * x_i(t-tau)))
+#    σ_j(u) = 1 / (1 + exp(-(BETA*u - m_j)))
+#    History buffer x_hist: shape (N, 5), columns = x(t-1)..x(t-5)
 # ─────────────────────────────────────────────
 def run_model(X_g1_input, label):
     X_out  = X_real.copy()
-    X_out[group1_idx, :] = X_g1_input     # overwrite Group 1, shape (G1, T)
-    x_cur  = X_out[:, 0].astype(np.float64)
-    rng_m  = np.random.default_rng(SEED + 1)   # fresh, same seed for fair comparison
+    X_out[group1_idx, :] = X_g1_input        # fix Group 1 spikes
+    rng_m  = np.random.default_rng(SEED + 1)
 
-    x_prev = np.zeros(N, dtype=np.float64)   # x(t-1), zero before recording starts
+    # History buffer: columns 0..4 = x(t-1)..x(t-5), initialised to zero
+    x_hist = np.zeros((N, TAU_MAX), dtype=np.float64)
 
     print(f"Running {label}...")
     for t in range(T - 1):
-        u   = W_sub @ (x_cur + x_prev)
+        # u_j = Σ_i Σ_{tau=1}^{5} W_sub_causal[j, i, tau-1] * x_hist[i, tau-1]
+        # einsum: (G2, N, 5) x (N, 5) -> (G2,)
+        u   = np.einsum('jit,it->j', W_sub_causal, x_hist)
         p   = expit(BETA * u - m_sub)
         new = (rng_m.random(G2) < p).astype(np.uint8)
         X_out[g2_arr, t + 1] = new
-        x_prev               = x_cur.copy()
-        x_cur[g2_arr]        = new.astype(np.float64)
-        x_cur[group1_idx]    = X_g1_input[:, t + 1].astype(np.float64)
+
+        # Build x(t) for all neurons — used to update history
+        x_t                  = X_out[:, t + 1].astype(np.float64)
+        x_t[group1_idx]      = X_g1_input[:, t + 1].astype(np.float64)
+
+        # Shift history: drop oldest (col 4), prepend x(t) as col 0
+        x_hist = np.roll(x_hist, 1, axis=1)
+        x_hist[:, 0] = x_t
+
         if (t + 1) % 100_000 == 0:
             print(f"  t = {t+1:,} / {T:,}")
 
@@ -240,7 +268,7 @@ for y_c, color, bold, sub in section_labels:
 for y_act, color, name in [
     (act_real,  'steelblue',    'Activity – real'),
     (act_model, 'darkorange',   'Activity – model'),
-    (act_null,  'mediumpurple', f'Activity – null (+{SHIFT_MS//1000}s shift)'),
+    (act_null,  'mediumpurple', 'Activity – null'),
 ]:
     fig.add_trace(go.Scattergl(
         x=t_act, y=y_act,
@@ -298,7 +326,7 @@ fig.update_xaxes(
     row=2, col=1,
 )
 
-out = f'model_raster_config{CONFIG_ID}.html'
+out = Path(__file__).parent / f'model_raster_config{CONFIG_ID}.html'
 fig.write_html(out, include_plotlyjs='cdn')
 print(f"Saved: {out}")
 print("Open in any browser — zoom/pan links both panels.")
