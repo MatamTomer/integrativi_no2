@@ -8,3 +8,17 @@ old2/old/analysis by discritization/pairwise_conditional_vectors_1ms.json
 old2/old/analysis by discritization/pairwise_conditional_vectors_5ms.json
 Experiment1/Raster_Plot/raster_original.html
 Experiment1/Raster_Plot/raster_gaussian.html
+
+# Large generated data files — too big for GitHub
+**/Per_Config/
+**/weights_pij_*.json
+**/run_log.txt
+**/model_raster_config*.html
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+
+# Large generated Experiment 2 arrays
+Experiment2/spike_data.npy
+Experiment2/spike_data_1ms_binned.npy
