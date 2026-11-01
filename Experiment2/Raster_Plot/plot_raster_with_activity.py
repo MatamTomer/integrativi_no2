@@ -8,7 +8,7 @@ from pathlib import Path
 # Which neurons to show
 # Set to None to show all, or list specific IDs e.g. [1, 5, 12, 93, 145]
 # ─────────────────────────────────────────────
-KEEP_NEURONS = [23, 7]  # e.g. [1, 5, 12, 93, 145]
+KEEP_NEURONS = {52}
 
 # ─────────────────────────────────────────────
 # 1. Load spike data

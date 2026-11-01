@@ -3,6 +3,7 @@ import argparse
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from scipy.special import logit
 
 EXPERIMENT2 = Path(__file__).parent.parent
 
@@ -77,12 +78,18 @@ B_j = np.array([B_source.get(nid, 0.0) for nid in neuron_ids], dtype=np.float64)
 print(f"  B_j range: [{B_j.min():.6f}, {B_j.max():.6f}]  mean={B_j.mean():.6f}")
 
 # ─────────────────────────────────────────────
-# Weights: w_ij(tau) = p_ij(tau) - B_j
+# Weights: w_ij(tau) = logit(p_ij(tau)) - logit(B_j)
 # B_j broadcast: shape (N,) -> subtract from axis=1 (j dimension)
+# Clip to (eps, 1-eps) before logit to avoid -inf/nan:
+#   p_ij can be 0 (no co-firing) → logit → -inf
+#   p_ij can be >1 (multiple spikes per trigger) → logit undefined
 # ─────────────────────────────────────────────
 # p_ij shape: (N, N, NUM_BINS)
 # B_j shape:  (N,)  — one baseline per target neuron j
-w_ij = p_ij - B_j[np.newaxis, :, np.newaxis]   # broadcast over i and bins
+EPS = 1e-10
+p_clipped = np.clip(p_ij, EPS, 1.0 - EPS)
+B_clipped = np.clip(B_j,  EPS, 1.0 - EPS)
+w_ij = logit(p_clipped) - logit(B_clipped)[np.newaxis, :, np.newaxis]
 
 # Zero out self-pairs
 np.fill_diagonal(w_ij[:, :, 0], 0.0)   # ensure diagonal is 0 across all bins
@@ -120,9 +127,10 @@ output = {
     'n_neurons':   N,
     'B_j':         B_j.tolist(),
     'description': (
-        'w_ij[i][j][k] = p_ij[i][j][k] - B_j[j]  '
-        '= excess conditional firing probability of neuron j at offset bins[k] ms '
-        f'given a spike of neuron i, above neuron j baseline. '
+        'w_ij[i][j][k] = logit(p_ij[i][j][k]) - logit(B_j[j])  '
+        '= log-odds of neuron j firing at offset bins[k] ms given a spike of neuron i, '
+        'minus log-odds of neuron j baseline firing. '
+        'p_ij and B_j clipped to (1e-10, 1-1e-10) before logit. '
         f'B_j = {b_j_description}. Shape: (N, N, NUM_BINS).'
     ),
     'w_ij': w_ij.tolist(),

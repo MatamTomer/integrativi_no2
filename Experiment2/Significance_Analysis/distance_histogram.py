@@ -112,8 +112,10 @@ ax.set_title('P(significant) = n_significant / n_total per bin',
 
 plt.tight_layout()
 plt.savefig('distance_histogram.pdf', bbox_inches='tight')
+plt.savefig('distance_histogram.png', dpi=600, bbox_inches='tight')
 plt.close()
 print("Saved: distance_histogram.pdf")
+print("Saved: distance_histogram.png")
 
 # ─────────────────────────────────────────────
 # PDF 2 — Decay shape analysis (log transforms)
@@ -172,6 +174,8 @@ for ax, (title, xd, yd, xl, yl) in zip(axes, transforms):
 
 plt.tight_layout()
 plt.savefig('distance_decay_shape.pdf', bbox_inches='tight')
+plt.savefig('distance_decay_shape.png', dpi=600, bbox_inches='tight')
 plt.close()
 print("Saved: distance_decay_shape.pdf")
+print("Saved: distance_decay_shape.png")
 print("Done.")

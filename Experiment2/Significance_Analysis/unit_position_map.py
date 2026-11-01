@@ -101,13 +101,13 @@ def edge_alpha(s_val):
     return 0.08 + 0.5 * min(abs(s_val) / s_max, 1.0)
 
 def edge_lw(s_val):
-    return 0.3 + 1.2 * min(abs(s_val) / s_max, 1.0)
+    return 0.3 + 1.0 * min(abs(s_val) / s_max, 1.0)
 
 # ─────────────────────────────────────────────
 # Plot
 # ─────────────────────────────────────────────
 print("Plotting...")
-fig, ax = plt.subplots(figsize=(14, 12))
+fig, ax = plt.subplots(figsize=(10, 6))
 
 # Draw edges first (behind nodes)
 for i, j, s_val in excit_edges:
@@ -122,24 +122,22 @@ for i, j, s_val in inhib_edges:
 
 # Draw nodes
 node_colors = [CLUSTER_COLORS[cluster_labels[i] - 1] for i in range(N)]
-ax.scatter(xs, ys, c=node_colors, s=120, zorder=3,
-           edgecolors='black', linewidths=0.6)
+ax.scatter(xs, ys, c=node_colors, s=70, zorder=3,
+           edgecolors='black', linewidths=0.5)
 
 # Label each unit
 for i, uid in enumerate(neuron_ids):
     if not np.isnan(xs[i]):
         ax.text(xs[i], ys[i], str(uid),
-                fontsize=4.5, ha='center', va='center',
+                fontsize=5, ha='center', va='center',
                 color='white', fontweight='bold', zorder=4)
 
+ax.tick_params(axis='both', labelsize=9)
 ax.set_xlabel('X position (µm)', fontsize=12)
 ax.set_ylabel('Y position (µm)', fontsize=12)
 ax.set_title(
-    f'Unit positions — Experiment 2  (n={N} units)\n'
-    f'Node color = cluster (k={N_CLUSTERS})   '
-    f'Coral edges = excitatory (S > {THRESHOLD}), n={len(excit_edges)}   '
-    f'Blue edges = inhibitory (S < −{THRESHOLD}), n={len(inhib_edges)}',
-    fontsize=11, fontweight='bold'
+    f'Unit positions — Experiment 2  (n={N} units)',
+    fontsize=14, fontweight='bold'
 )
 
 legend_handles = [mpatches.Patch(color=CLUSTER_COLORS[c - 1], label=f'Cluster {c}')
@@ -148,12 +146,16 @@ legend_handles += [
     mpatches.Patch(color='coral',      label=f'Excitatory edge (S > {THRESHOLD})'),
     mpatches.Patch(color='steelblue',  label=f'Inhibitory edge (S < −{THRESHOLD})'),
 ]
-ax.legend(handles=legend_handles, loc='upper right', fontsize=9,
-          framealpha=0.9)
+ax.legend(handles=legend_handles, loc='upper left', bbox_to_anchor=(1.01, 1.0),
+          fontsize=9, framealpha=0.9)
 
 ax.set_aspect('equal')
 plt.tight_layout()
 plt.savefig('unit_position_map.pdf', bbox_inches='tight')
+plt.savefig('unit_position_map.svg', bbox_inches='tight')
+plt.savefig('unit_position_map.png', dpi=600, bbox_inches='tight')
 plt.close()
 print("Saved: unit_position_map.pdf")
+print("Saved: unit_position_map.svg")
+print("Saved: unit_position_map.png")
 print("Done.")
